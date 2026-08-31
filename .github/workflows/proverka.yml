@@ -1,0 +1,76 @@
+name: Проверки
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  proverka:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Шапка навыка разбирается и не несёт мёртвых полей
+        run: |
+          python3 - <<'PY'
+          import yaml
+          s = open('skill/SKILL.md', encoding='utf-8').read()
+          assert s.startswith('---\n'), 'нет шапки'
+          d = yaml.safe_load(s[4:s.find('\n---', 4) + 1])
+          assert d.get('name') == 'agent-loop', 'имя не то'
+          assert 'triggers' not in d, 'мёртвое поле triggers'
+          print('шапка в порядке, полей', len(d))
+          PY
+
+      # Потолок навык ставит себе сам — здесь он проверяется, а не просто заявлен.
+      - name: Влезает в бюджет 5000 токенов
+        run: |
+          pip install -q tiktoken
+          python3 - <<'PY'
+          import tiktoken, sys
+          n = len(tiktoken.get_encoding('cl100k_base').encode(
+              open('skill/SKILL.md', encoding='utf-8').read()))
+          print('токенов:', n)
+          if n > 5000:
+              print(f'::error::Навык вырос до {n} токенов при потолке 5000')
+              sys.exit(1)
+          PY
+
+      # Правила, которые стоили дороже всего. Пропадёт любое — сборка красная.
+      - name: Несущие правила на месте
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          s = re.sub(r'\s+', ' ', open('skill/SKILL.md', encoding='utf-8').read())
+          нужно = {
+            'git add перед коммитом': 'git add -- PLAN.md BACKLOG.md',
+            'тик короче шага': 'обязан уложиться в шаг',
+            'доказательство постановки': 'докажи, что оно завелось',
+            'снять расписание': 'сними расписание',
+            'потолок состояния': 'тот же потолок, что у этого файла',
+            'три исхода': 'НЕ ПРОВЕРЕНО',
+            'зрячий зонд': 'зонд не доказал',
+            'вопрос в состояние': 'запиши вопрос в состояние',
+          }
+          плохо = [k for k, v in нужно.items() if v not in s]
+          for k in плохо:
+              print(f'::error::Пропало правило: {k}')
+          sys.exit(1 if плохо else 0)
+          PY
+
+      # Контроль: проверка выше обязана УМЕТЬ краснеть, иначе её зелёное пустое.
+      - name: Та же проверка на изувеченной копии обязана покраснеть
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          s = open('skill/SKILL.md', encoding='utf-8').read().replace('git add -- PLAN.md BACKLOG.md', 'ВЫРЕЗАНО')
+          s = re.sub(r'\s+', ' ', s)
+          if 'git add -- PLAN.md BACKLOG.md' in s:
+              print('::error::Проверка СЛЕПА: вырезанное правило всё ещё находится')
+              sys.exit(1)
+          print('контроль сработал: на изувеченной копии правило не найдено ✅')
+          PY
