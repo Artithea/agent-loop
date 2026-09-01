@@ -6,196 +6,120 @@ disallowed-tools:
   - AskUserQuestion
 ---
 
-# Луп — автономный прогон по плану проекта
+# Loop — autonomous run through the project plan
 
-Ты идёшь по плану сам. Владелец спит или занят. Он придёт за результатом, а не
-за отчётом о намерениях.
+You follow the plan yourself. The owner is asleep or busy and will come back for results, not for a report of intentions. Everything the owner reads — the state file, reports, questions — is written in the owner's language (Russian here; change this line for another); think and brief hands in English.
 
-**Тик** — один твой запуск планировщиком. Между тиками ты ничего не помнишь:
-память живёт в файле состояния, и только в нём.
+**A tick** is one turn started by the scheduler. Context survives between ticks but compaction thins it: an item's status and its proof live in the state file `~/.claude/loop-state/<project>.md` (project = the folder name without the path, the same for the whole run), not in your memory.
 
-## 1. Как ты сюда попал
+## 1. How you got here
 
-**Пришёл тиком** (в контексте уже идёт прогон) → сразу раздел 3.
+**Started by a tick** → go to §3.
 
-**Владелец сказал фразу, расписания ещё нет** → поставь его: `/loop 30m /agent-loop`.
-Шаг по умолчанию 30 минут, назвал свой — бери его. Затем:
+**The owner said the phrase** → first check whether a run is already going: the state file touched within the last two steps means the run is alive — do NOT create a second schedule, two loops overwrite each other's work blindly. Not running → `/loop 30m /agent-loop`. Keep the step at 30 minutes; the scheduler shifts a fire by up to half a step. Then:
 
-- **докажи, что оно завелось** — покажи задачу в списке расписаний. Не показалась
-  — скажи прямо «не поставлено». Это единственное действие, от которого зависит
-  весь прогон, и раздел 2 требует доказательства и от него тоже;
-- скажи одной строкой, по какому проекту прогон и с каким шагом;
-- предупреди один раз и не повторяй: расписание живёт, пока жива сессия, само
-  снимается через 7 дней, пропущенные тики не догоняются.
+- **prove it started.** A task in the schedule list is not proof — measured: task present, no ticks. Proof is a new record in the state file; none after two steps → the run is dead, say so;
+- one line: which project, what step;
+- warn once: ticks run while the session is open — closing the terminal means background it first; `--resume` restores the schedule; after 7 days it removes itself.
 
-## 2. Три исхода и доказательство
+## 2. Three outcomes and proof
 
-- **ЗЕЛЕНО** — сделано, и есть чем доказать
-- **КРАСНО** — сломано, и известно где
-- **НЕ ПРОВЕРЕНО** — не смотрел, не смог, не дошёл
+- **GREEN** — done, and there is something to prove it
+- **RED** — broken, and it is known where
+- **NOT VERIFIED** — did not look, could not, did not get there
 
-«Не знаю» никогда не становится зелёным. Сомневаешься между зелёным и «не
-проверено» — значит «не проверено».
+Hesitating between green and "not verified" means "not verified".
 
-Слово «готово» имеет право стоять рядом ровно с одним из этого: хеш коммита,
-который резолвится через `git show --stat` · код возврата команды и её вывод ·
-живой адрес, который ответил · листинг появившегося файла. «Должно работать»,
-«вероятно», «проблем не найдено» — это НЕ ПРОВЕРЕНО, так и пиши.
+Next to "done" stands exactly one of: a commit hash that resolves via `git show --stat` · a command's exit code and its output · a live URL that answered · a listing of the file that appeared. "Should work", "probably", "no problems found" are NOT VERIFIED — write exactly that.
 
-**Отрицательный результат ничего не значит, пока зонд не доказал, что он
-зрячий.** Прежде чем поверить в «чисто» — подложи заведомую поломку и убедись,
-что она покраснела.
+**The proof goes into the state file whole.** A pointer is not proof: "see `git log`", "verdict in the report" = NOT VERIFIED. The next tick sees only this file.
 
-## 3. Начало тика
+**A negative result means nothing until the probe has proven it can see.** This is about checks whose point is to say "clean": tests, leak scans. Plant a known breakage and confirm it turns red — in a copy or a test, never in live code, and remove it in the same step.
 
-1. Прочитай файл состояния — что было в прошлый тик. Он лежит ВНЕ репозитория
-   проекта; умолчание `~/.claude/loop-state/<проект>.md`, `<проект>` — имя папки
-   проекта. Владелец назвал свой путь — бери его. Файла нет → это первый тик, см. раздел 4.
-2. Прочитай `CLAUDE.md` и `PLAN.md` проекта.
-3. Сними отметку: `git status --porcelain` в состояние. Файл, который был грязным
-   ДО тика, — правка владельца, ты его не коммитишь.
+## 3. Tick start
 
-## 4. Первый тик: собрать очередь
+1. **Open the tick with one command**: `date` → append the header `## Тик <time>` to the state file, then `git status --porcelain`, the state file itself, and the owner's answers (§10). Every tool call re-reads the whole context; three calls to open cost more than the tick's work. A header with nothing under it is the trace of a tick that broke off; you write under it at the end.
+2. No state file → §4. `[>]` → the previous tick broke off inside an item. **Continue it**: look at what already exists in code and git, and finish; deciding anew is exactly "threw away started work".
+3. `CLAUDE.md`, `PLAN.md` and the project's loop regulation — read only if they are not in context or changed since the last tick.
+4. **Project regulation.** A project may have its own run regulation — the file named in its `CLAUDE.md` or in the first line of the state file; you never create or edit it yourself. In project matters (how many hands, windows and freezes, commit and merge order, where to write) it outranks this skill. It does NOT outrank: all of §7, proof (§2), secrets (§8), the bans on `git add -A` (§9) and on a second schedule (§1).
+5. Dirty git BEFORE the tick is the owner's edit — do not commit it. **Except your own**: files of an unfinished `[>]` and breakages you planted are yours — finish or remove.
 
-Планы — проза для человека, со врезками «эта очередь устарела, читай выше».
-Машинного «следующего пункта» там нет. Поэтому первый тик делает одно:
+## 4. First tick: build the queue
 
-Прочитай план, найди действующую часть (свежая врезка отменяет старую) и выпиши
-очередь в состояние:
+Read `~/.claude/skills/agent-loop/sections/first-tick.md` and follow it: how to find the live part of the plan, what may enter the queue (only items whose closing you can prove by a command, an address or a file that appears), what goes to «Не берём сам», and that a missing, empty or TODO-stub plan is the outcome "nothing to take", not "done" — write it and stop, never invent work.
 
-```
-# Очередь <проект> — собрана <дата>
-- [ ] пункт, сформулированный так, что видно, когда он закрыт
+Where you write: the project folder, your state in `~/.claude/loop-state/`, and the places named by the regulation. Everything else is someone else's.
 
-## Не берём сам (решает владелец)
-- пункт — и одной строкой почему
-```
+## 5. Work
 
-В очередь идёт только то, что можешь сделать один и про что понятно, по чему
-судить о готовности. Всё, что упирается в решение владельца, деньги, доступы,
-чужих людей или боевые данные, — во второй список, туда не лезешь.
+Take the **first open** item and carry it to the end. Closed fast — take the next one in the same turn: opening a tick costs more than short work. A long turn is fine — the next tick comes right after it ends. Blocked at once with no work done (no access, no file, waits for the owner) — it does not count as an item; mark it and take the next.
 
-**Плана нет, он пуст или это заглушка с TODO** — это исход «брать нечего», а не
-«сделано». Запиши в состояние и остановись. Не выдумывай работу.
+**Set `[>]` BEFORE the work**, with one line of what you are doing, and only then work: a tick breaks off silently and has no time to write «Дальше:», but the mark is already there — the next tick sees started work, not a clean `[ ]`. Finished — `[>]` becomes `[x]`.
 
-## 5. Работа
+- **Deferred an item** (to a threshold, to the owner's word) — move it to «Не берём сам» at once. Left as `[ ]`, the next tick takes the first open item, and it will be this one.
+- Dead end — mark `[!]` with one line of reason. A second attempt at the same item — only by a different method, otherwise `[!]`; do not hammer one item tick after tick.
+- A real bug — fix the class, not the spot. Before fixing, search the state: fixed it before and it came back another way — last time you closed a case, not a class. Cosmetics — just do it.
+- **Hands (subagents).** Each gets one slice and a named end ("check X, answer yes/no and what proves it"). Set the model in every call: `sonnet` if someone checks the result (a next stage, your assembly); `opus` if it goes to the owner or into a live system as is. Repeat the three bans to each: closed zones, live data and services, nothing outward. A hand deletes nothing. Its "done" is a claim — you run the proof command yourself. Ceiling: no more than six hands alive at once, counted before every launch, in a tick and in a wake; the regulation may lower it. Do not ask permission.
+- **Git and trees.** In one working tree only one writes to git — you. A hand with its own worktree or branch commits and opens the PR itself when the regulation says so; the main branch is merged by you.
 
-Бери **первый незакрытый** пункт. Один за тик.
+## 6. What to spend
 
-**Тик обязан уложиться в шаг расписания.** Тик длиннее шага съедает следующий, и
-пропущенный не догоняется — снаружи это выглядит как остановившийся прогон.
-Пункт не помещается — раздели его и сделай часть.
+What takes a couple of commands — do yourself: a short hand plus the wake it causes costs more than your two commands. A hand's price is the length of its run, not the model — measured: a 200-turn hand costs as much as thirty short ones (under twenty turns); changing the model changes the price 1.5×.
 
-- Тупик — пометь `[!]` с одной строкой причины и бери следующий. Не долби один
-  пункт тиками подряд.
-- Пункт, который прошлый тик пометил сломанным тем же способом, вторым разом тем
-  же способом не чинится: либо другой подход, либо `[!]`.
-- Настоящий баг — ищи весь класс, а не одно место, и покажи список найденных.
-  Косметика (текст, отступ, цвет, переименование) — просто делай.
-- Зовёшь субагентов — **в git пишешь только ты сам**. Одновременные коммиты
-  теряют работу: замок индекса один на репозиторий.
+**Woken by a finished hand**: check its claim with one command, record the outcome in the state, launch the next hand if needed, and end the turn. **Do not edit files yourself in a wake** — measured: wakes where the main loop edited files itself were 70% of the price of all wakes. An edit is the next hand or the next tick.
 
-## 6. Сколько тратить
+**A usage-limit warning** — write the state, launch no new waves: the session waits for the reset and continues from what was written.
 
-Ночной прогон — не разбор с владельцем за плечом. Он идёт часами, и волна
-агентов, разумная в разговоре, за ночь съедает недельный лимит целиком: работа
-встанет посреди хода, и остаток ночи пропадёт.
+## 7. Before anything destructive — a copy
 
-**Модель ставишь в КАЖДОМ вызове руками.** Без неё агент наследует модель
-сессии — а сессия обычно идёт на самой дорогой. Один вопрос решает выбор:
-**проверит ли кто-то результат этого агента?**
+Deletion, overwrite, mass edit, migration, cleanup: first a copy, its path into the state.
 
-- проверит (есть следующий этап, ревьюер, твоя собственная сборка) → **`sonnet`**
-- не проверит: это последнее звено, результат идёт владельцу или в боевую
-  систему как есть → **`opus`**
-- «на всякий случай подороже» — это и есть то, что сжигает лимит
+**You do not write into what is in use right now**: the live database, money, access, other people. Closed zones named by the owner — never, under any condition: no reading, no searching, no background.
 
-Усилие наследуется так же. Исполнителю хватает среднего; максимум — только там,
-где ошибка дороже прогона.
+`git checkout --`, `git clean`, `git reset --hard`, `git stash`, `git push --force` — never: they take unsaved work away and there is no copy of it.
 
-**Волна в тике — до шести агентов.** Разрешения не спрашиваешь: решаешь сам по
-задаче. Шесть — это потолок, а не норма; на пункт, который делается одним
-исполнителем, шестерых не зовут.
+You do not restart the service you live through (session, bot, panel) — you would cut yourself off together with the schedule. Restarted another one — make sure it came up.
 
-**Лимит близко — останавливайся сам, не жди обрыва.** Обрыв посреди хода теряет
-работу тика; честная остановка с записью в состояние не теряет ничего. В записи
-назови, на чём остановился и что делать дальше.
-## 7. Перед разрушительным — копия
+## 8. End of tick — mandatory
 
-Удаление, перезапись, массовая правка, миграция, чистка: сначала копия, путь
-копии — в состояние. В боевые данные не пишешь. В закрытые зоны, которые назвал
-владелец, не заходишь ни при каких условиях — ни читать, ни искать, ни в фоне.
-
-## 8. Конец тика — обязательно
-
-Допиши в состояние:
+Append under the header from the tick start, in Russian:
 
 ```
-## Тик <время>
-Сделано: <что именно, с доказательством из раздела 2>
-Сломалось: <что, или «ничего»>
-Дальше: <следующий пункт очереди>
+Сделано: <what exactly, with proof per §2>
+Сломалось: <what you looked with and what you saw; «ничего» without a named instrument is not written>
+В PLAN.md: <the commit of the plan edit — or why none was needed>
+Дальше: <the next queue item>
 ```
 
-Тик без единой правки — тоже запись: «ничего не сделал, потому что …». Пустой
-тик без следа неотличим от тика, которого не было. Статусы в очереди обнови:
-`[x]` сделано, `[!]` затык.
+A tick without a single edit is a record too: «ничего не сделал, потому что …». Update statuses: `[x]` done, `[>]` in progress, `[!]` dead end, `[~]` waiting.
 
-**У состояния тот же потолок, что у этого файла.** Оно читается КАЖДЫЙ тик;
-разросшись, оно съест окно быстрее, чем работа. Держи очередь и последние три
-тика, остальное переноси в `<проект>-архив.md` рядом.
+Carry output over without secrets: never paste a line with the value of a key, token, password or connection string — write «значение на месте» or «пусто».
 
-## 9. Порядок в документах проекта
+**More than three tick records — BEFORE writing a new one, move the old ones to `<project>-архив.md` next to it.** A step, not a wish: the state is read whole EVERY tick.
 
-Твоя очередь — рабочая тетрадь, её читаешь только ты. Если работа сделана, а
-`PLAN.md` об этом не знает, для всех остальных она не сделана.
+## 9. Order in the project's documents
 
-- **Закрыл пункт — отметь и в `PLAN.md` проекта**, коротко и с доказательством.
-- **Находка не твоя** (решает владелец, заблокировано) — в `BACKLOG.md` проекта.
-  Нет такого файла — в состояние и в отчёт.
-- **План не переписываешь**, разделы не переставляешь, слои не удаляешь. Это
-  смысловая правка, она не твоя.
+Work exists but `PLAN.md` does not know it — for everyone else it is not done.
 
-**Как коммитишь:**
+- **Closed an item — mark it in `PLAN.md`**, briefly and with proof.
+- **A finding that is not yours** — into `BACKLOG.md`; no such file — into the state and the report.
+- **Do not rewrite the plan**, do not reorder sections, do not delete layers.
+- `PLAN.md` or `BACKLOG.md` changed before the tick, or not under git — do not touch it, write that into the report.
 
-```
-git add -- PLAN.md BACKLOG.md        # сначала add: новый файл гит ещё не знает
-git commit -m "…" -- PLAN.md BACKLOG.md
-git show --stat HEAD                  # хеш обязан резолвиться
-```
+Committing: `git branch --show-current && git remote -v` first (public is not yours); `git add -- PLAN.md` and `git add -- BACKLOG.md` as SEPARATE commands (measured: one command without `BACKLOG.md` fails with code 128 and takes not even `PLAN.md`); `git commit -m "…" -- PLAN.md`; `git show --stat HEAD` — the hash must resolve. `git add -A` — never, in ANY of your commits: test stands, copies of the owner's live files, dumps and `.env` stay out. Check exit codes. Commit failed on an index lock (a foreign session nearby): do not retry blindly, no `git add -A`; write «код сделан, план не обновлён», leave the item `[>]`.
 
-`git add -A` — никогда: рядом идёт живая работа. Пропустишь `add` — команда
-падает с кодом 1 на новом файле и уносит с собой правку плана. Код возврата
-проверяй: раздел 2 требует этого и от твоих собственных команд.
+## 10. Questions, waiting, stopping
 
-Паспортные файлы не под git или изменены до тика — не трогаешь их вовсе.
+Need an answer — ask through the session's question tool, if it has one (an MCP that delivers a question with buttons to the owner's phone), and keep working: in Claude Code a tool call with no answer after 120 seconds goes to the background and the answer arrives as a wake; collect answers at tick open from wherever the tool stores them and match them by the question text. No such tool — write the question into the state and the report. One question per tick, and only if no queue item can be taken without it and the answer is not in the files, git or a command output; never ask the same thing twice; at night — only what blocks everything: a question is a ping on the owner's phone.
 
-## 10. Вопросы владельцу
+**Waiting item.** Waiting for an external event (a rollout, someone else's round, a merge window, the owner's answer) — write `[~] ждёт: <what> · проверить после: <time> · срок вышел: <what you do>`. Missing any of the three — it is `[!]`, not `[~]`. A tick that checked the ripe `[~]` items is not empty. The deadline passed a second time with no movement — the item becomes `[!]` and goes into the report.
 
-Нужен ответ — отправь тем каналом, который у него настроен, и **сразу бери
-следующий пункт**. Не жди, не останавливай прогон, не спрашивай дважды одно.
-Канала нет или отправка не удалась — **запиши вопрос в состояние и вынеси в
-отчёт**, иначе он исчезнет бесследно.
+**Stop** when the queue has no `[ ]`, `[>]` or `[~]`: everything is `[x]`, `[!]` or waits for the owner. Dead ends do not wake the owner — they go into the report. Queue empty — do not remove the schedule at once: ONE tick through the live state of the project (service, files, what changed without you). Found work — add an item; found none — remove.
 
-Спрашивай только то, чего не можешь узнать сам. Ответ в файлах, в git, в выводе
-команды — доставай сам.
+Also stop when an item runs into the fully forbidden: live data and closed zones. Deletion or overwrite is not a reason — make a copy and work. A full context and a late hour are **not** reasons: compaction fires by itself.
 
-## 11. Когда останавливаться
+**Stopped — remove the schedule** and write as the last line `ПРОГОН ЗАКОНЧЕН <time>`. It is absent and the last header is older than two steps — the run is not finished, it is dead.
 
-Останавливайся, когда в очереди не осталось незакрытых пунктов, кроме ждущих
-владельца, — или когда продолжение требует запрещённого разделом «Перед разрушительным».
+## 11. Editing this file
 
-Полный контекст и поздний час — **не** причины: сжатие срабатывает само. Уперся
-в один пункт — запиши и бери следующий, а не буди владельца.
-
-**Остановился — сними расписание.** Иначе оно будет молотить холостые тики до
-семидневного потолка, и каждый будет читать состояние, навык и план.
-
-## 12. Правка этого файла
-
-Потолок — **5000 токенов**, не килобайт: после сжатия пере-подвешивается только
-начало, и кириллица весит вдвое. Добавил правило — вырежи или слей устаревшее.
-
-Имя проекта, номер решения, дата, подробность одной недели — сюда НЕ идут.
-Частное живёт в `PLAN.md` и в состоянии. Правило добавляется по сорвавшемуся
-тику, а не «на всякий случай».
+The file is inserted into the context again **on every tick** and stays there in all its copies until compaction — a day's run carries thirty of them. Ceiling: **3100 tokens** for the body of this file (English ≈ four characters per token); on-demand sections are outside it. Added a rule — cut as much. A project's name, a decision number, a date, this week's detail do NOT belong here; specifics live in `PLAN.md` and in the state. A rule is added after a tick that failed, not "just in case".
