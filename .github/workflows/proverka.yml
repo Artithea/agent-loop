@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
+      - name: Зависимости проверок (PyYAML, tiktoken)
+        run: pip install -q pyyaml tiktoken
 
       - name: Шапка навыка разбирается и не несёт мёртвых полей
         run: |
@@ -36,7 +38,6 @@ jobs:
       # Потолок навык ставит себе сам (§11: 3100 токенов тела) — здесь он проверяется, а не просто заявлен.
       - name: Влезает в бюджет — 3100 токенов тела, 3500 файла целиком
         run: |
-          pip install -q tiktoken
           python3 - <<'PY'
           import tiktoken, sys
           enc = tiktoken.get_encoding('cl100k_base')
